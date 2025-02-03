@@ -1,0 +1,6 @@
+version: 1
+directus: 11.3.5
+vendor: mysql
+collections: []
+fields: []
+relations: []

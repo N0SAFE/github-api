@@ -9,6 +9,7 @@ import {
     WebhookIcon,
     ChevronUp,
     ChevronDown,
+    MoreHorizontal,
 } from 'lucide-react'
 import { Button } from '@repo/ui/components/shadcn/button'
 import {
@@ -40,6 +41,15 @@ import ItemMoreInfo from './item-more-info'
 import { useQuery } from '@tanstack/react-query'
 import ItemDeliveriesList from './item-deliveries-list'
 import { RestEndpointMethodTypes } from '@octokit/rest'
+import { useDebounceState } from '@/hooks/use-debounce-state'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@repo/ui/components/shadcn/dropdown-menu'
 
 interface Webhook {
     id: number
@@ -72,6 +82,7 @@ interface WebhookListProps {
     ) => Promise<
         RestEndpointMethodTypes['repos']['listWebhookDeliveries']['response']['data']
     >
+    onDelete: (webhookId: number) => void
 }
 
 const ITEMS_PER_PAGE = 5
@@ -84,9 +95,18 @@ export function WebhookList({
     owner,
     repo,
     getWebhookDeliveries,
+    onDelete,
 }: WebhookListProps) {
     const [selectedUser, setSelectedUser] = useState<string | null>(null)
     const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
+    const debounceSelectedUser = useDebounceState<string | null>(
+        selectedUser,
+        1000
+    )
+    const debounceSelectedRepo = useDebounceState<string | null>(
+        selectedRepo,
+        1000
+    )
     const [expandedWebhook, setExpandedWebhook] = useState<number | null>(null)
     const [currentPage, setCurrentPage] = useState<{ [key: number]: number }>(
         {}
@@ -119,12 +139,24 @@ export function WebhookList({
     const getPageCount = (webhookId: number) => {
         return 2
     }
+    console.log({
+        owner,
+        repo,
+        selectedUser,
+        selectedRepo,
+        debounceSelectedUser,
+        debounceSelectedRepo,
+    })
 
     useEffect(() => {
-        if (selectedUser && selectedRepo) {
-            onChange(selectedUser, selectedRepo)
+        console.log({
+            debounceSelectedUser,
+            debounceSelectedRepo,
+        })
+        if (debounceSelectedUser && debounceSelectedRepo) {
+            onChange(debounceSelectedUser, debounceSelectedRepo)
         }
-    }, [selectedUser, selectedRepo])
+    }, [debounceSelectedUser, debounceSelectedRepo])
 
     console.log('webhooks', webhooks)
 
@@ -179,6 +211,7 @@ export function WebhookList({
                                 <TableHead>URL</TableHead>
                                 <TableHead>Événements</TableHead>
                                 <TableHead>Statut</TableHead>
+                                <TableHead>Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -265,6 +298,42 @@ export function WebhookList({
                                                         : 'Inactif'}
                                                 </span>
                                             </TableCell>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0"
+                                                    >
+                                                        <span className="sr-only">
+                                                            Open menu
+                                                        </span>
+                                                        <MoreHorizontal />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuLabel>
+                                                        Actions
+                                                    </DropdownMenuLabel>
+                                                    <DropdownMenuItem asChild
+                                                        onClick={() =>
+                                                            navigator.clipboard.writeText(
+                                                                'test'
+                                                            )
+                                                        }
+                                                    >
+                                                        <Button variant="destructive">
+                                                            Copy webhook URL
+                                                        </Button>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem>
+                                                        View customer
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem>
+                                                        View payment details
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </TableRow>
                                         {expandedWebhook === webhook.id && (
                                             <TableRow>

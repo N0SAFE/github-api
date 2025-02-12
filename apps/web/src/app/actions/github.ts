@@ -1,62 +1,51 @@
-'use server'
-import { validateEnv } from '#/env'
+'use client'
+
 import { Octokit } from '@octokit/rest'
-import crypto from 'crypto'
-
-const env = validateEnv(process.env)
-
-const config = {
-    GITHUB_TOKEN: env.GITHUB_TOKEN,
-    WEBHOOK_SECRET: 'votre_secret_webhook_local',
-}
 
 const octokit = new Octokit({
-    auth: config.GITHUB_TOKEN,
+    auth: process.env.NEXT_PUBLIC_GITHUB_TOKEN,
 })
 
-// Fonction de vérification de signature avec log pour debug
-function verifyWebhookSignature(request: Request, data: any) {
-    const signature = request.headers.get('x-hub-signature-256')
-    console.log('Signature reçue:', signature)
-
-    if (!signature) {
-        console.log('Aucune signature trouvée dans les headers')
-        return false
-    }
-
-    const hmac = crypto
-        .createHmac('sha256', config.WEBHOOK_SECRET)
-        .update(JSON.stringify(data))
-        .digest('hex')
-
-    const expectedSignature = `sha256=${hmac}`
-    console.log('Signature attendue:', expectedSignature)
-
-    return signature === expectedSignature
+// Ensure required environment variables are present
+if (!process.env.WEBHOOK_SECRET) {
+    throw new Error('WEBHOOK_SECRET is required')
 }
 
-// Fonction pour créer le webhook avec l'URL ngrok
-async function _createWebhook(owner: string, repo: string, webhookUrl: string) {
-    try {
-        console.log(
-            `Création du webhook pour ${owner}/${repo} avec l'URL: ${webhookUrl}`
-        )
+if (!process.env.GITHUB_USERNAME) {
+    throw new Error('GITHUB_USERNAME is required')
+}
 
-        const response = await octokit.repos.createWebhook({
+// Move interfaces to types file if needed later
+export interface Webhook {
+    id: number
+    url: string
+    config?: {
+        url?: string
+        content_type?: string
+        insecure_ssl?: string | number
+    }
+    events: string[]
+    active: boolean
+}
+
+export async function getWebhookDeliveries({
+    owner,
+    repo,
+    webhookId,
+}: {
+    owner: string
+    repo: string
+    webhookId: number
+}) {
+    try {
+        const { data: deliveries } = await octokit.repos.listWebhookDeliveries({
             owner,
             repo,
-            config: {
-                url: webhookUrl,
-                content_type: 'json',
-                secret: config.WEBHOOK_SECRET,
-            },
-            events: ['pull_request'],
+            hook_id: webhookId,
         })
-
-        console.log('Webhook créé avec succès:', response.data)
-        return response.data
+        return deliveries
     } catch (error) {
-        console.error('Erreur lors de la création du webhook:', error)
+        console.error('Error fetching webhook deliveries:', error)
         throw error
     }
 }
@@ -70,25 +59,21 @@ export async function createWebhook({
     repo: string
     webhookUrl: string
 }) {
-    'use server'
-
-    console.log('Création du webhook pour:', owner, repo, webhookUrl)
-    if (!owner || !repo || !webhookUrl) {
-        throw new Error('owner, repo et webhookUrl sont requis', {
-            cause: new Error('Paramètres manquants'),
-        })
-    }
-
     try {
-        const webhook = await _createWebhook(owner, repo, webhookUrl)
-        return {
-            status: 'success',
-            webhook,
-        }
-    } catch (error: any) {
-        throw new Error('Erreur lors de la création du webhook', {
-            cause: error,
+        const { data: webhook } = await octokit.repos.createWebhook({
+            owner,
+            repo,
+            config: {
+                url: webhookUrl,
+                content_type: 'json',
+                secret: process.env.WEBHOOK_SECRET,
+            },
+            events: ['pull_request'],
         })
+        return webhook
+    } catch (error) {
+        console.error('Error creating webhook:', error)
+        throw error
     }
 }
 
@@ -170,7 +155,7 @@ export async function getWebhooks({
     }
 }
 
-export async function getWebhookDeliveries({
+export async function deleteWebhook({
     owner,
     repo,
     webhookId,
@@ -179,11 +164,63 @@ export async function getWebhookDeliveries({
     repo: string
     webhookId: number
 }) {
-    return octokit.repos
-        .listWebhookDeliveries({
-            hook_id: webhookId,
+    try {
+        console.log('Suppression du webhook:', owner, repo, webhookId)
+        const response = await octokit.repos.deleteWebhook({
             owner,
             repo,
+            hook_id: webhookId,
         })
-        .then(({ data }) => data)
+
+        console.log('Webhook supprimé avec succès:', response.data)
+        return response.data
+    } catch (error) {
+        console.error('Erreur lors de la suppression du webhook:', error)
+        throw error
+    }
+}
+
+export async function getRepositories() {
+    try {
+        const { data: repos } = await octokit.repos.listForUser({
+            username: process.env.GITHUB_USERNAME as string,
+            sort: 'updated',
+            per_page: 100
+        });
+        
+        return repos.map(repo => ({
+            id: repo.id,
+            name: repo.name,
+            full_name: repo.full_name,
+            description: repo.description
+        }));
+    } catch (error) {
+        console.error('Error fetching repositories:', error);
+        throw error;
+    }
+}
+
+export async function toggleWebhookActive({
+    owner,
+    repo,
+    webhookId,
+    active,
+}: {
+    owner: string
+    repo: string
+    webhookId: number
+    active: boolean
+}) {
+    try {
+        const { data: webhook } = await octokit.repos.updateWebhook({
+            owner,
+            repo,
+            hook_id: webhookId,
+            active,
+        })
+        return webhook
+    } catch (error) {
+        console.error('Error toggling webhook:', error)
+        throw error
+    }
 }

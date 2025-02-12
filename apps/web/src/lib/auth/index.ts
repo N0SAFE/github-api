@@ -1,5 +1,6 @@
 import NextAuth, { User } from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
+import GitHubProvider from "next-auth/providers/github"
 import { handleError } from '../utils'
 import { AuthenticationData, readMe, withToken } from '@repo/directus-sdk'
 import { JWT } from 'next-auth/jwt'
@@ -57,6 +58,16 @@ const result = NextAuth({
         strategy: 'jwt',
     },
     providers: [
+        GitHubProvider({
+            clientId: process.env.GITHUB_ID || "",
+            clientSecret: process.env.GITHUB_SECRET || "",
+            // We'll request additional scopes for webhook management
+            authorization: {
+                params: {
+                    scope: 'read:user user:email admin:repo_hook repo',
+                },
+            },
+        }),
         Credentials({
             // You can specify which fields should be submitted, by adding keys to the `credentials` object.
             // e.g. domain, username, password, 2FA token, etc.

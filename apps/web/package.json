@@ -35,6 +35,7 @@
         "babel-plugin-react-compiler": "^19.0.0-beta-e552027-20250112",
         "concurrently": "^8.2.2",
         "cross-env": "^7.0.3",
+        "date-fns": "^4.1.0",
         "declarative-routing": "^0.1.19",
         "lucide-react": "^0.292.0",
         "next": "15.1.4",

@@ -1,42 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Button } from '@repo/ui/components/shadcn/button'
-import { Input } from '@repo/ui/components/shadcn/input'
-import {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent,
-} from '@repo/ui/components/shadcn/card'
-import {
-    GithubIcon as GitHubLogoIcon,
-    WebhookIcon,
-    RefreshCw,
-    Trash2,
-    ChevronUp,
-    ChevronDown,
-    Loader2,
-} from 'lucide-react'
+import { useState } from 'react'
+import { GithubIcon as GitHubLogoIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@repo/ui/components/shadcn/table'
-import {
-    Pagination,
-    PaginationContent,
-    PaginationItem,
-    PaginationLink,
-    PaginationNext,
-    PaginationPrevious,
-} from '@repo/ui/components/shadcn/pagination'
-import { getApiWebhook } from '@/routes'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ConfigurationForm } from '@/components/webhook-manager/form'
 import { WebhookList } from '@/components/webhook-manager/webhook-list/list'
@@ -44,14 +10,9 @@ import {
     getWebhooks,
     createWebhook as _createWebhook,
     getWebhookDeliveries,
+    toggleWebhookActive,
 } from './actions/github'
-import { useDebounceState } from '@/hooks/use-debounce-state'
-
-interface WebhookLog {
-    timestamp: string
-    event: string
-    body: any
-}
+import { deleteWebhook as deleteWebhookAction } from './actions/github'
 
 interface Webhook {
     id: number
@@ -65,33 +26,10 @@ interface Webhook {
     active: boolean
 }
 
-const ITEMS_PER_PAGE = 5
-
 export default function Home() {
-    const [owner, setOwner] = useState('')
+    const [owner] = useState('N0SAFE')
     const [repo, setRepo] = useState('')
-    const [webhookUrl, setWebhookUrl] = useState('')
-    const [expandedWebhook, setExpandedWebhook] = useState<number | null>(null)
-    const [currentPage, setCurrentPage] = useState<Record<number, number>>({})
 
-    // // Query for webhook logs
-    // const {
-    //     data: logs = [],
-    //     isLoading: isLoadingLogs,
-    //     refetch: refetchLogs,
-    // } = useQuery({
-    //     queryKey: ['webhookLogs', expandedWebhook, currentPage],
-    //     queryFn: async () => {
-    //         // return getApiWebhookOwnerRepo({
-    //         //     owner,
-    //         //     repo,
-    //         // })
-    //         return []
-    //     },
-    //     refetchInterval: 30000, // Refetch every 30 seconds
-    // })
-
-    // Query for webhooks list
     const {
         data: webhooks = [],
         isLoading: isLoadingWebhooks,
@@ -99,14 +37,13 @@ export default function Home() {
     } = useQuery<Webhook[]>({
         queryKey: ['webhooks', owner, repo],
         queryFn: async () => {
-            console.log('owner', owner)
-            if (!owner || !repo) return []
+            if (!repo) return []
             return getWebhooks({
                 owner,
                 repo,
             }).then((data) => data.webhooks)
         },
-        enabled: Boolean(owner && repo), // Only run query if owner and repo are provided
+        enabled: Boolean(repo),
     })
 
     const createWebhook = useMutation({
@@ -127,7 +64,7 @@ export default function Home() {
                 })
 
                 toast.success('Serveur webhook démarré avec succès!')
-                refetchWebhooks() // Rafraîchir la liste des webhooks
+                refetchWebhooks()
             } catch (error) {
                 toast.error('Erreur lors du démarrage du serveur webhook')
                 console.error(error)
@@ -135,32 +72,40 @@ export default function Home() {
         },
     })
 
-    const toggleWebhook = (webhookId: number) => {
-        setExpandedWebhook(expandedWebhook === webhookId ? null : webhookId)
-        if (!currentPage[webhookId]) {
-            setCurrentPage((prev) => ({ ...prev, [webhookId]: 1 }))
-        }
-    }
+    const deleteWebhook = useMutation({
+        mutationFn: async (webhookId: number) => {
+            try {
+                await deleteWebhookAction({
+                    owner,
+                    repo,
+                    webhookId,
+                })
+                toast.success('Webhook supprimé avec succès!')
+                refetchWebhooks()
+            } catch (error) {
+                toast.error('Erreur lors de la suppression du webhook')
+                console.error(error)
+            }
+        },
+    })
 
-    const getWebhookLogs = (webhookId: number) => {
-        // return logs.filter((log) => log.webhookId === webhookId)
-        return []
-    }
-
-    const getPaginatedLogs = (webhookId: number) => {
-        const webhookLogs = getWebhookLogs(webhookId)
-        const page = currentPage[webhookId] || 1
-        const start = (page - 1) * ITEMS_PER_PAGE
-        const end = start + ITEMS_PER_PAGE
-        return webhookLogs.slice(start, end)
-    }
-
-    const getPageCount = (webhookId: number) => {
-        const webhookLogs = getWebhookLogs(webhookId)
-        return Math.ceil(webhookLogs.length / ITEMS_PER_PAGE)
-    }
-
-    console.log(webhooks)
+    const toggleWebhook = useMutation({
+        mutationFn: async ({ webhookId, active }: { webhookId: number; active: boolean }) => {
+            try {
+                await toggleWebhookActive({
+                    owner,
+                    repo,
+                    webhookId,
+                    active,
+                })
+                toast.success(active ? 'Webhook activé' : 'Webhook désactivé')
+                refetchWebhooks()
+            } catch (error) {
+                toast.error('Erreur lors de la modification du webhook')
+                console.error(error)
+            }
+        },
+    })
 
     return (
         <div className="min-h-screen">
@@ -194,11 +139,13 @@ export default function Home() {
                         webhooks={webhooks}
                         isLoadingWebhooks={isLoadingWebhooks}
                         onRefresh={refetchWebhooks}
-                        onChange={(owner, repo) => {
-                            console.log('onChange', owner, repo)
-                            setOwner(owner)
+                        onChange={(_owner, repo) => {
                             setRepo(repo)
                         }}
+                        onDelete={(webhookId) => deleteWebhook.mutate(webhookId)}
+                        onToggleActive={(webhookId, active) => 
+                            toggleWebhook.mutate({ webhookId, active })
+                        }
                         getWebhookDeliveries={(webhookId) =>
                             getWebhookDeliveries({
                                 owner,
@@ -207,7 +154,6 @@ export default function Home() {
                             })
                         }
                         repo={repo}
-                        owner={owner}
                     />
                 </div>
             </div>

@@ -1,24 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import {
-    ListChecks,
-    Loader2,
-    RefreshCw,
-    GithubIcon as GitHubLogoIcon,
-    WebhookIcon,
-    ChevronUp,
-    ChevronDown,
-    MoreHorizontal,
-} from 'lucide-react'
-import { Button } from '@repo/ui/components/shadcn/button'
+import { useEffect, useState } from 'react'
+import { Loader2, RefreshCw, ChevronDown, ChevronRight, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import {
     Card,
     CardHeader,
-    CardTitle,
-    CardDescription,
     CardContent,
 } from '@repo/ui/components/shadcn/card'
+import { Button } from '@repo/ui/components/shadcn/button'
 import {
     Table,
     TableBody,
@@ -27,21 +17,15 @@ import {
     TableHeader,
     TableRow,
 } from '@repo/ui/components/shadcn/table'
-import { WebhookItem } from './item'
-import { Input } from '@repo/ui/components/shadcn/input'
 import {
-    Pagination,
-    PaginationContent,
-    PaginationItem,
-    PaginationPrevious,
-    PaginationLink,
-    PaginationNext,
-} from '@repo/ui/components/shadcn/pagination'
-import ItemMoreInfo from './item-more-info'
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@repo/ui/components/shadcn/select'
 import { useQuery } from '@tanstack/react-query'
-import ItemDeliveriesList from './item-deliveries-list'
-import { RestEndpointMethodTypes } from '@octokit/rest'
-import { useDebounceState } from '@/hooks/use-debounce-state'
+import { getRepositories } from '@/app/actions/github'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -63,172 +47,123 @@ interface Webhook {
     active: boolean
 }
 
-interface WebhookLog {
-    timestamp: string
-    event: string
-    body: any
-    webhookId?: number
-}
-
 interface WebhookListProps {
     webhooks: Webhook[]
     isLoadingWebhooks: boolean
     onRefresh: () => void
     onChange: (owner: string, repo: string) => void
-    owner?: string
     repo?: string
-    getWebhookDeliveries: (
-        webhookId: number
-    ) => Promise<
-        RestEndpointMethodTypes['repos']['listWebhookDeliveries']['response']['data']
-    >
     onDelete: (webhookId: number) => void
+    onToggleActive: (webhookId: number, active: boolean) => void
+    getWebhookDeliveries?: (webhookId: number) => Promise<any>
 }
-
-const ITEMS_PER_PAGE = 5
 
 export function WebhookList({
     webhooks,
     isLoadingWebhooks,
     onRefresh,
     onChange,
-    owner,
     repo,
-    getWebhookDeliveries,
     onDelete,
+    onToggleActive,
 }: WebhookListProps) {
-    const [selectedUser, setSelectedUser] = useState<string | null>(null)
+    const router = useRouter()
+    const [selectedUser] = useState('N0SAFE')
     const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
-    const debounceSelectedUser = useDebounceState<string | null>(
-        selectedUser,
-        1000
-    )
-    const debounceSelectedRepo = useDebounceState<string | null>(
-        selectedRepo,
-        1000
-    )
     const [expandedWebhook, setExpandedWebhook] = useState<number | null>(null)
-    const [currentPage, setCurrentPage] = useState<{ [key: number]: number }>(
-        {}
-    )
 
-    const {
-        data: expandedWebhookDeliveries,
-        isLoading: expandedWebhookDeliveriesIsLoading,
-    } = useQuery({
-        queryKey: ['webhookDeliveries', expandedWebhook, currentPage],
-        queryFn: async () => {
-            if (!expandedWebhook) return []
-            return getWebhookDeliveries(expandedWebhook)
-        },
+    const { data: repositories = [], isLoading: isLoadingRepos } = useQuery({
+        queryKey: ['repositories', selectedUser],
+        queryFn: getRepositories,
+        staleTime: 300000, // Cache for 5 minutes
     })
 
     useEffect(() => {
-        if (owner !== selectedUser) {
-            setSelectedUser(owner ?? null)
-        }
         if (repo !== selectedRepo) {
             setSelectedRepo(repo ?? null)
         }
-    }, [owner, repo])
+    }, [repo, selectedRepo])
+
+    const handleRepoChange = (newRepo: string) => {
+        setSelectedRepo(newRepo)
+        onChange(selectedUser, newRepo)
+    }
 
     const toggleExpanded = (webhookId: number) => {
         setExpandedWebhook((prev) => (prev === webhookId ? null : webhookId))
     }
 
-    const getPageCount = (webhookId: number) => {
-        return 2
-    }
-    console.log({
-        owner,
-        repo,
-        selectedUser,
-        selectedRepo,
-        debounceSelectedUser,
-        debounceSelectedRepo,
-    })
-
-    useEffect(() => {
-        console.log({
-            debounceSelectedUser,
-            debounceSelectedRepo,
-        })
-        if (debounceSelectedUser && debounceSelectedRepo) {
-            onChange(debounceSelectedUser, debounceSelectedRepo)
+    const navigateToWebhook = (webhookId: number) => {
+        if (repo) {
+            router.push(`/${repo}/${webhookId}`)
         }
-    }, [debounceSelectedUser, debounceSelectedRepo])
-
-    console.log('webhooks', webhooks)
+    }
 
     return (
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <div className="flex items-center space-x-4">
-                    <div>
-                        <CardTitle className="flex items-center space-x-2">
-                            <ListChecks className="h-5 w-5" />
-                            <span>Webhooks Configurés</span>
-                        </CardTitle>
-                        <CardDescription>
-                            Liste des webhooks actifs pour {selectedUser}/
-                            {selectedRepo}
-                        </CardDescription>
+            <CardHeader>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                        <span>Webhooks Configurés</span>
                     </div>
-                    <Input
-                        placeholder="Propriétaire"
-                        value={selectedUser ?? ''}
-                        onChange={(e) => setSelectedUser(e.target.value)}
-                        className="w-32"
-                    />
-                    <Input
-                        placeholder="Repository"
-                        value={selectedRepo ?? ''}
-                        onChange={(e) => setSelectedRepo(e.target.value)}
-                        className="w-64"
-                    />
+                    <div className="flex items-center space-x-4">
+                        <Select
+                            value={selectedRepo ?? ''}
+                            onValueChange={handleRepoChange}
+                            disabled={isLoadingRepos}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Sélectionner un repository" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {repositories.map((repo) => (
+                                    <SelectItem key={repo.id} value={repo.name}>
+                                        {repo.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={onRefresh}
+                            disabled={isLoadingWebhooks}
+                        >
+                            <RefreshCw
+                                className={`h-4 w-4 ${
+                                    isLoadingWebhooks ? 'animate-spin' : ''
+                                }`}
+                            />
+                        </Button>
+                    </div>
                 </div>
-
-                <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={onRefresh}
-                    disabled={
-                        isLoadingWebhooks || !selectedUser || !selectedRepo
-                    }
-                    className="transition-all hover:bg-primary hover:text-primary-foreground"
-                >
-                    <RefreshCw
-                        className={`h-4 w-4 ${isLoadingWebhooks ? 'animate-spin' : ''}`}
-                    />
-                </Button>
             </CardHeader>
             <CardContent>
                 <div className="rounded-md border">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead></TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
                                 <TableHead>URL</TableHead>
-                                <TableHead>Événements</TableHead>
-                                <TableHead>Statut</TableHead>
-                                <TableHead>Actions</TableHead>
+                                <TableHead>Events</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {!selectedUser || !selectedRepo ? (
+                            {isLoadingWebhooks ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={4}
-                                        className="text-center text-muted-foreground"
+                                        colSpan={5}
+                                        className="h-24 text-center"
                                     >
-                                        Veuillez saisir le propriétaire et le
-                                        repository
+                                        <Loader2 className="mx-auto h-6 w-6 animate-spin" />
                                     </TableCell>
                                 </TableRow>
                             ) : webhooks.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={4}
+                                        colSpan={5}
                                         className="text-center text-muted-foreground"
                                     >
                                         Aucun webhook configuré
@@ -237,27 +172,24 @@ export function WebhookList({
                             ) : (
                                 webhooks.map((webhook) => (
                                     <>
-                                        <TableRow
-                                            key={webhook.id}
-                                            className="group"
-                                        >
+                                        <TableRow key={webhook.id} className="group">
                                             <TableCell>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() =>
-                                                        toggleExpanded(
-                                                            webhook.id
-                                                        )
+                                                        toggleExpanded(webhook.id)
                                                     }
                                                     className="h-8 w-8"
-                                                    key={webhook.id}
                                                 >
-                                                    {expandedWebhook ===
-                                                    webhook.id ? (
-                                                        <ChevronUp className="h-4 w-4" />
+                                                    {isLoadingWebhooks ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
                                                     ) : (
-                                                        <ChevronDown className="h-4 w-4" />
+                                                        expandedWebhook === webhook.id ? (
+                                                            <ChevronDown className="h-4 w-4" />
+                                                        ) : (
+                                                            <ChevronRight className="h-4 w-4" />
+                                                        )
                                                     )}
                                                 </Button>
                                             </TableCell>
@@ -266,16 +198,14 @@ export function WebhookList({
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {webhook.events.map(
-                                                        (event) => (
-                                                            <span
-                                                                key={event}
-                                                                className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary transition-colors group-hover:bg-primary/20"
-                                                            >
-                                                                {event}
-                                                            </span>
-                                                        )
-                                                    )}
+                                                    {webhook.events.map((event) => (
+                                                        <span
+                                                            key={event}
+                                                            className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary transition-colors group-hover:bg-primary/20"
+                                                        >
+                                                            {event}
+                                                        </span>
+                                                    ))}
                                                 </div>
                                             </TableCell>
                                             <TableCell>
@@ -298,62 +228,94 @@ export function WebhookList({
                                                         : 'Inactif'}
                                                 </span>
                                             </TableCell>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-8 w-8 p-0"
-                                                    >
-                                                        <span className="sr-only">
-                                                            Open menu
-                                                        </span>
-                                                        <MoreHorizontal />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>
-                                                        Actions
-                                                    </DropdownMenuLabel>
-                                                    <DropdownMenuItem asChild
-                                                        onClick={() =>
-                                                            navigator.clipboard.writeText(
-                                                                'test'
-                                                            )
-                                                        }
-                                                    >
-                                                        <Button variant="destructive">
-                                                            Copy webhook URL
+                                            <TableCell>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            className="h-8 w-8 p-0"
+                                                        >
+                                                            <span className="sr-only">
+                                                                Open menu
+                                                            </span>
+                                                            <MoreVertical className="h-4 w-4" />
                                                         </Button>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem>
-                                                        View customer
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem>
-                                                        View payment details
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuLabel>
+                                                            Actions
+                                                        </DropdownMenuLabel>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                navigateToWebhook(
+                                                                    webhook.id
+                                                                )
+                                                            }
+                                                        >
+                                                            <ExternalLink className="mr-2 h-4 w-4" />
+                                                            Voir les détails
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => onToggleActive(webhook.id, !webhook.active)}
+                                                        >
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="mr-2 h-4 w-4 p-0"
+                                                            >
+                                                                {webhook.active ? (
+                                                                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                                                                ) : (
+                                                                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                                                                )}
+                                                            </Button>
+                                                            {webhook.active ? 'Désactiver' : 'Activer'}
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            className="text-destructive"
+                                                            onClick={() =>
+                                                                onDelete(webhook.id)
+                                                            }
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Supprimer le webhook
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
                                         </TableRow>
                                         {expandedWebhook === webhook.id && (
                                             <TableRow>
-                                                <TableCell
-                                                    colSpan={4}
-                                                    className="p-0"
-                                                >
-                                                    <ItemMoreInfo
-                                                        webhook={webhook}
-                                                    />
-                                                    {!expandedWebhookDeliveriesIsLoading &&
-                                                    expandedWebhookDeliveries ? (
-                                                        <ItemDeliveriesList
-                                                            deliveries={
-                                                                expandedWebhookDeliveries
-                                                            }
-                                                        />
-                                                    ) : (
-                                                        <Loader2 />
-                                                    )}
+                                                <TableCell colSpan={5} className="bg-muted/50">
+                                                    <div className="space-y-2 p-2">
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <span className="font-semibold">ID:</span>{' '}
+                                                                <span className="font-mono">{webhook.id}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold">Content Type:</span>{' '}
+                                                                <span className="font-mono">{webhook.config?.content_type || 'N/A'}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold">SSL Verification:</span>{' '}
+                                                                <span className="font-mono">
+                                                                    {webhook.config?.insecure_ssl === '0' ? 'Enabled' : 'Disabled'}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold">Status:</span>{' '}
+                                                                <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs ${
+                                                                    webhook.active
+                                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-100'
+                                                                        : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-100'
+                                                                }`}>
+                                                                    {webhook.active ? 'Active' : 'Inactive'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         )}

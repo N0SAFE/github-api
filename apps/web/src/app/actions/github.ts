@@ -1,18 +1,19 @@
-'use client'
+'use server'
 
 import { Octokit } from '@octokit/rest'
 
+if (!process.env.GITHUB_TOKEN) {
+    throw new Error('GITHUB_TOKEN is required')
+}
+
 const octokit = new Octokit({
-    auth: process.env.NEXT_PUBLIC_GITHUB_TOKEN,
+    auth: process.env.GITHUB_TOKEN,
 })
 
 // Ensure required environment variables are present
-if (!process.env.WEBHOOK_SECRET) {
-    throw new Error('WEBHOOK_SECRET is required')
-}
 
-if (!process.env.GITHUB_USERNAME) {
-    throw new Error('GITHUB_USERNAME is required')
+if (!process.env.GITHUB_USER) {
+    throw new Error('GITHUB_USER is required')
 }
 
 // Move interfaces to types file if needed later
@@ -37,6 +38,7 @@ export async function getWebhookDeliveries({
     repo: string
     webhookId: number
 }) {
+     'use server'
     try {
         const { data: deliveries } = await octokit.repos.listWebhookDeliveries({
             owner,
@@ -59,6 +61,7 @@ export async function createWebhook({
     repo: string
     webhookUrl: string
 }) {
+     'use server'
     try {
         const { data: webhook } = await octokit.repos.createWebhook({
             owner,
@@ -66,7 +69,7 @@ export async function createWebhook({
             config: {
                 url: webhookUrl,
                 content_type: 'json',
-                secret: process.env.WEBHOOK_SECRET,
+                secret: 'process.env.WEBHOOK_SECRET',
             },
             events: ['pull_request'],
         })
@@ -84,6 +87,7 @@ export async function getWebhooks({
     owner: string
     repo: string
 }) {
+     'use server'
     try {
         const { data: webhooks } = await octokit.repos.listWebhooks({
             owner,
@@ -164,6 +168,7 @@ export async function deleteWebhook({
     repo: string
     webhookId: number
 }) {
+     'use server'
     try {
         console.log('Suppression du webhook:', owner, repo, webhookId)
         const response = await octokit.repos.deleteWebhook({
@@ -181,9 +186,10 @@ export async function deleteWebhook({
 }
 
 export async function getRepositories() {
+     'use server'
     try {
         const { data: repos } = await octokit.repos.listForUser({
-            username: process.env.GITHUB_USERNAME as string,
+            username: process.env.GITHUB_USER as string,
             sort: 'updated',
             per_page: 100
         });
@@ -211,6 +217,7 @@ export async function toggleWebhookActive({
     webhookId: number
     active: boolean
 }) {
+    'use server'
     try {
         const { data: webhook } = await octokit.repos.updateWebhook({
             owner,

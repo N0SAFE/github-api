@@ -1,4 +1,5 @@
 import { type DefaultSession } from 'next-auth'
+import NextAuth from "next-auth"
 
 declare module 'next-auth' {
     /**
@@ -10,9 +11,9 @@ declare module 'next-auth' {
         email: string
         first_name: string
         last_name: string
-        access_token: string
-        expires: number
-        refresh_token: string
+        access_token?: string
+        expires?: number
+        refresh_token?: string
     }
     /**
      * The shape of the account object returned in the OAuth providers' `account` callback,
@@ -30,6 +31,9 @@ declare module 'next-auth' {
         refresh_token?: string
         tokenIsRefreshed: boolean | null
         error?: string | null
+        accessToken?: string
+        userId?: string
+        githubToken?: string
     }
 }
 
@@ -41,6 +45,9 @@ declare module 'next-auth/jwt' {
         refresh_token?: string
         error?: string | null
         tokenIsRefreshed?: boolean | null
+        accessToken?: string
+        userId?: string
+        githubToken?: string
     }
 }
 

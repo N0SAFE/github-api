@@ -1,5 +1,5 @@
 {
-    "name": "github-webhook-test",
+    "name": "github-api",
     "private": true,
     "workspaces": [
         "apps/*",

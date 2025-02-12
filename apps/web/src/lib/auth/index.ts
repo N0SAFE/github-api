@@ -1,4 +1,4 @@
-import NextAuth, { User } from 'next-auth'
+import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import GitHubProvider from "next-auth/providers/github"
 import { handleError } from '../utils'
@@ -9,6 +9,7 @@ import { createDirectusEdgeWithDefaultUrl } from '../directus/directus-edge'
 import { memoize } from '@/lib/better-unstable-cache'
 import { validateEnv } from '#/env'
 import { Session, NextAuthResult } from 'next-auth'
+import { saveGitHubToken } from '../directus/github-tokens'
 
 export const pages = {
     signIn: '/auth/login',
@@ -61,16 +62,13 @@ const result = NextAuth({
         GitHubProvider({
             clientId: process.env.GITHUB_ID || "",
             clientSecret: process.env.GITHUB_SECRET || "",
-            // We'll request additional scopes for webhook management
             authorization: {
                 params: {
-                    scope: 'read:user user:email admin:repo_hook repo',
+                    scope: 'read:user user:email repo'
                 },
             },
         }),
         Credentials({
-            // You can specify which fields should be submitted, by adding keys to the `credentials` object.
-            // e.g. domain, username, password, 2FA token, etc.
             credentials: {
                 email: {
                     label: 'Email',
@@ -139,26 +137,37 @@ const result = NextAuth({
         }),
     ],
     callbacks: {
-        async jwt({
-            token,
-            account,
-            user,
-            trigger,
-            session,
-        }): Promise<JWT | null> {
+        async signIn({ user, account }) {
+            if (account?.provider === 'github') {
+                // Store GitHub tokens in Directus
+                await saveGitHubToken(user.id, {
+                    access_token: account.access_token || '',
+                    token_type: account.token_type,
+                    scope: account.scope,
+                    expires_at: account.expires_at 
+                        ? new Date(account.expires_at * 1000).toISOString() 
+                        : undefined
+                });
+            }
+            return true
+        },
+        async jwt({ token, account, user, trigger, session }): Promise<JWT | null> {
             const env = validateEnv(process.env)
 
             try {
                 if (env.SHOW_AUTH_LOGS) {
                     console.log('callback: jwt')
-                    console.log({
-                        token,
-                        account,
-                        user,
-                        trigger,
-                        session,
-                    })
+                    console.log({ token, account, user, trigger, session })
                 }
+
+                // If this is a sign-in with GitHub
+                if (account && account.provider === 'github') {
+                    token.githubToken = account.access_token
+                    token.userId = user.id
+                    return token
+                }
+
+                // For credentials auth, use existing logic
                 if (trigger === 'update' && !session?.tokenIsRefreshed) {
                     token.access_token = session.access_token
                     token.refresh_token = session.refresh_token
@@ -224,11 +233,15 @@ const result = NextAuth({
                 return null
             }
         },
-        async session({ session, token, user }): Promise<Session> {
+        async session({ session, token }): Promise<Session> {
             const env = validateEnv(process.env)
 
             if (env.SHOW_AUTH_LOGS) {
                 console.log('callback: session')
+            }
+            if (token.githubToken) {
+                session.githubToken = token.githubToken;
+                session.userId = token.userId as string;
             }
             if (token.error) {
                 session.error = token.error

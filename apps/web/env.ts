@@ -18,6 +18,7 @@ const env = {
     MILLION_LINT: zod.enum(['true', 'false']).transform((value) => value === 'true').optional().default('false'),
     SHOW_AUTH_LOGS: zod.enum(['true', 'false']).transform((value) => value === 'true').optional().default('false'),
     GITHUB_TOKEN: zod.string(),
+    GITHUB_USER: zod.string()
 }
 
 export const envSchemaPublic = zod.object(publicEnv)

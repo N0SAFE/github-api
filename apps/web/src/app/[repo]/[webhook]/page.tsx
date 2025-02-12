@@ -1,3 +1,4 @@
+'use client'
 import { getWebhooks, getWebhookDeliveries } from '@/app/actions/github'
 import {
     Card,
@@ -15,28 +16,105 @@ import {
     TableRow,
 } from '@repo/ui/components/shadcn/table'
 import { Button } from '@repo/ui/components/shadcn/button'
-import { WebhookIcon, ArrowLeft, CheckCircle, XCircle } from 'lucide-react'
+import { WebhookIcon, ArrowLeft, CheckCircle, XCircle, ArrowUpDown } from 'lucide-react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
+import { use, useState } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@repo/ui/components/shadcn/select'
+import { useQuery } from '@tanstack/react-query'
 
 interface PageProps {
-    params: {
+    params: Promise<{
         repo: string
         webhook: string
-    }
+    }>
 }
 
-export default async function WebhookPage({ params }: PageProps) {
-    const { repo, webhook } = params
-    const owner = 'N0SAFE' // In a real app, get from session
+interface Delivery {
+    id: number
+    guid: string
+    delivered_at: string
+    redelivery: boolean
+    duration: number
+    status: string
+    status_code: number
+    event: string
+    action: string | null
+    installation_id: number | null
+    repository_id: number | null
+    throttled_at: string | null | undefined
+}
 
-    // Fetch webhook details and deliveries
-    const { webhooks } = await getWebhooks({ owner, repo })
-    const webhookData = webhooks.find((w: { id: number }) => w.id.toString() === webhook)
-    const deliveries = await getWebhookDeliveries({ owner, repo, webhookId: Number(webhook) })
+type SortField = 'delivered_at' | 'duration' | 'status' | 'event'
+type SortOrder = 'asc' | 'desc'
+
+export default function WebhookPage({ params }: PageProps) {
+    const { repo, webhook } = use(params)
+    const owner = 'N0SAFE' // In a real app, get from session
+    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [eventFilter, setEventFilter] = useState<string>('all')
+    const [sortField, setSortField] = useState<SortField>('delivered_at')
+    const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+
+    const { data: webhookData } = useQuery({
+        queryKey: ['webhook', owner, repo, webhook],
+        queryFn: async () => {
+            const { webhooks } = await getWebhooks({ owner, repo })
+            return webhooks.find((w: { id: number }) => w.id.toString() === webhook)
+        }
+    })
+
+    const { data: deliveries = [] } = useQuery({
+        queryKey: ['webhook-deliveries', owner, repo, webhook],
+        queryFn: () => getWebhookDeliveries({ owner, repo, webhookId: Number(webhook) })
+    })
 
     if (!webhookData) {
         return <div>Webhook not found</div>
+    }
+
+    const uniqueEvents = Array.from(new Set(deliveries.map(d => d.event)))
+
+    const filteredAndSortedDeliveries = [...deliveries]
+        .filter((delivery) => {
+            if (statusFilter !== 'all' && delivery.status !== statusFilter) {
+                return false;
+            }
+            if (eventFilter !== 'all' && delivery.event !== eventFilter) {
+                return false;
+            }
+            return true;
+        })
+        .sort((a, b) => {
+            let comparison = 0;
+            
+            switch (sortField) {
+                case 'delivered_at':
+                    comparison = new Date(b.delivered_at).getTime() - new Date(a.delivered_at).getTime();
+                    break;
+                case 'duration':
+                    comparison = b.duration - a.duration;
+                    break;
+                case 'status':
+                    comparison = b.status.localeCompare(a.status);
+                    break;
+                case 'event':
+                    comparison = (b.event || '').localeCompare(a.event || '');
+                    break;
+                default:
+                    comparison = 0;
+            }
+            
+            return sortOrder === 'desc' ? comparison : -comparison;
+        });
+
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortField(field)
+            setSortOrder('desc')
+        }
     }
 
     return (
@@ -87,27 +165,84 @@ export default async function WebhookPage({ params }: PageProps) {
                     <CardHeader>
                         <CardTitle>Recent Deliveries</CardTitle>
                         <CardDescription>
-                            Last {deliveries.length} webhook delivery attempts
+                            Last {filteredAndSortedDeliveries.length} webhook delivery attempts
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
+                        <div className="mb-4 flex gap-4">
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Filter by status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Statuses</SelectItem>
+                                    <SelectItem value="success">Success</SelectItem>
+                                    <SelectItem value="failure">Failure</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={eventFilter} onValueChange={setEventFilter}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Filter by event" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Events</SelectItem>
+                                    {uniqueEvents.map((event) => (
+                                        <SelectItem key={event} value={event}>
+                                            {event}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Event</TableHead>
-                                    <TableHead>Time</TableHead>
-                                    <TableHead>Duration</TableHead>
+                                    <TableHead>
+                                        <Button 
+                                            variant="ghost" 
+                                            onClick={() => handleSort('status')}
+                                            className="h-8 text-xs font-medium"
+                                        >
+                                            Status
+                                            <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead>
+                                        <Button 
+                                            variant="ghost" 
+                                            onClick={() => handleSort('event')}
+                                            className="h-8 text-xs font-medium"
+                                        >
+                                            Event
+                                            <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead>
+                                        <Button 
+                                            variant="ghost" 
+                                            onClick={() => handleSort('delivered_at')}
+                                            className="h-8 text-xs font-medium"
+                                        >
+                                            Time
+                                            <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead>
+                                        <Button 
+                                            variant="ghost" 
+                                            onClick={() => handleSort('duration')}
+                                            className="h-8 text-xs font-medium"
+                                        >
+                                            Duration
+                                            <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {deliveries.map((delivery: { 
-                                    id: string; 
-                                    status: string; 
-                                    event: string; 
-                                    duration: number; 
-                                    delivered_at: string 
-                                }) => (
+                                {filteredAndSortedDeliveries.map((delivery: Delivery) => (
                                     <TableRow key={delivery.id}>
                                         <TableCell>
                                             <span className="flex items-center gap-2">
